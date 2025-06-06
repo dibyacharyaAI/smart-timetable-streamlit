@@ -3,28 +3,59 @@ import streamlit as st
 import pandas as pd
 import json
 import os
+from datetime import datetime
 
 st.set_page_config(page_title="Smart Timetable Dashboard", layout="wide")
 
 # --- Load Files ---
 data_dir = "data"
-students_df = pd.read_excel(os.path.join(data_dir, "synthetic_students.xlsx"))
-teachers_df = pd.read_excel(os.path.join(data_dir, "synthetic_teachers.xlsx"))
-curriculum_df = pd.read_excel(os.path.join(data_dir, "normalized_curriculum.xlsx"))
-activities_df = pd.read_excel(os.path.join(data_dir, "activities_table.xlsx"))
-final_tt_df = pd.read_csv(os.path.join(data_dir, "final_clean_timetable.csv"))
-anomalies_df = pd.read_csv(os.path.join(data_dir, "anomalies_detected.csv"))
-healed_df = pd.read_csv(os.path.join(data_dir, "healed_timetable.csv"))
-transit_df = pd.read_csv(os.path.join(data_dir, "flagged_transit_violations.csv"))
-with open(os.path.join(data_dir, "transit_time.json")) as f:
-    transit_map = json.load(f)
+def load_data(filename, filetype="csv"):
+    if filetype == "csv":
+        return pd.read_csv(os.path.join(data_dir, filename))
+    elif filetype == "excel":
+        return pd.read_excel(os.path.join(data_dir, filename))
+    elif filetype == "json":
+        with open(os.path.join(data_dir, filename)) as f:
+            return json.load(f)
+
+students_df = load_data("synthetic_students.xlsx", "excel")
+teachers_df = load_data("synthetic_teachers.xlsx", "excel")
+curriculum_df = load_data("normalized_curriculum.xlsx", "excel")
+activities_df = load_data("activities_table.xlsx", "excel")
+final_tt_df = load_data("final_clean_timetable.csv")
+anomalies_df = load_data("anomalies_detected.csv")
+healed_df = load_data("healed_timetable.csv")
+transit_df = load_data("flagged_transit_violations.csv")
+transit_map = load_data("transit_time.json", "json")
 
 # --- Sidebar ---
 st.sidebar.title("📊 Filters")
 view_type = st.sidebar.radio("View As", ["Student", "Teacher", "Admin"])
 campus_filter = st.sidebar.multiselect("Campus", ["Campus A", "Campus B", "Campus C"], default=["Campus A"])
-batch_filter = st.sidebar.multiselect("Batch", ["A", "B", "C"], default=["A"])
+scheme_filter = st.sidebar.multiselect("Scheme", ["A", "B"], default=["A"])
 
+# --- Upload Updated Timetable ---
+latest_uploaded = None
+if view_type == "Admin":
+    st.sidebar.markdown("---")
+    uploaded_file = st.sidebar.file_uploader("Upload Updated Timetable CSV", type=["csv"])
+    if uploaded_file:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        upload_path = os.path.join("data", f"uploaded_timetable_{timestamp}.csv")
+        with open(upload_path, "wb") as f:
+            f.write(uploaded_file.read())
+        st.sidebar.success(f"✅ Uploaded: {upload_path}")
+        latest_uploaded = upload_path
+
+        if st.sidebar.button("🔁 Run Timetable Pipeline"):
+            with st.spinner("Running AI pipeline..."):
+                exit_code = os.system(f"python pipeline_runner.py {upload_path}")
+                if exit_code == 0:
+                    st.sidebar.success("✅ Pipeline complete. Dashboard updated!")
+                else:
+                    st.sidebar.error("❌ Pipeline failed. Check console logs.")
+
+# --- Main Views ---
 if view_type == "Student":
     section_list = final_tt_df["SectionID"].dropna().unique().tolist()
     selected_section = st.sidebar.selectbox("Section", section_list)
@@ -55,7 +86,7 @@ elif view_type == "Teacher":
 
 elif view_type == "Admin":
     st.title("🛠️ Admin Dashboard")
-    st.markdown("View all schedules across sections, batches, and teachers")
+    st.markdown("View all schedules across schemes, sections, and teachers")
     st.dataframe(final_tt_df, use_container_width=True)
     st.markdown("---")
     st.subheader("⚠️ Anomalies")
@@ -66,4 +97,4 @@ elif view_type == "Admin":
     st.dataframe(transit_df, use_container_width=True)
 
 st.markdown("---")
-st.info("To integrate this with frontend, expose endpoints from these datasets.")
+st.info("Upload → Run AI Pipeline → View final result below")
