@@ -1,4 +1,4 @@
-
+# smart-timetable-streamlit/app.py
 import streamlit as st
 import pandas as pd
 import json
@@ -20,34 +20,50 @@ with open(os.path.join(data_dir, "transit_time.json")) as f:
     transit_map = json.load(f)
 
 # --- Sidebar ---
-st.sidebar.title("📊 Timetable Navigator")
-section_list = final_tt_df["SectionID"].unique().tolist()
-selected_section = st.sidebar.selectbox("Select Section", section_list)
+st.sidebar.title("📊 Filters")
+view_type = st.sidebar.radio("View As", ["Student", "Teacher", "Admin"])
+campus_filter = st.sidebar.multiselect("Campus", ["Campus A", "Campus B", "Campus C"], default=["Campus A"])
+batch_filter = st.sidebar.multiselect("Batch", ["A", "B", "C"], default=["A"])
 
-# --- Main Display ---
-st.title("📘 Smart Timetable Dashboard")
-st.markdown("---")
+if view_type == "Student":
+    section_list = final_tt_df["SectionID"].dropna().unique().tolist()
+    selected_section = st.sidebar.selectbox("Section", section_list)
+    st.title("📘 Student Timetable")
+    section_tt = final_tt_df[final_tt_df["SectionID"] == selected_section]
+    section_anomalies = anomalies_df[anomalies_df["SectionID"] == selected_section]
+    section_healed = healed_df[healed_df["SectionID"] == selected_section]
+    section_transit = transit_df[transit_df["SectionID"] == selected_section] if "SectionID" in transit_df.columns else pd.DataFrame()
 
-# Filtered Views
-section_tt = final_tt_df[final_tt_df["SectionID"] == selected_section]
-section_anomalies = anomalies_df[anomalies_df["SectionID"] == selected_section]
-section_healed = healed_df[healed_df["SectionID"] == selected_section]
-section_transit = transit_df[transit_df["SectionID"] == selected_section] if "SectionID" in transit_df.columns else pd.DataFrame()
-
-col1, col2 = st.columns(2)
-with col1:
     st.subheader("🗓️ Final Timetable")
     st.dataframe(section_tt, use_container_width=True)
 
-with col2:
     st.subheader("🩻 Anomalies Detected")
     st.dataframe(section_anomalies if not section_anomalies.empty else "✅ No anomalies!", use_container_width=True)
 
-st.subheader("🛠️ Healed Timetable (Auto-Reconstructed)")
-st.dataframe(section_healed if not section_healed.empty else "✅ No healing needed!", use_container_width=True)
+    st.subheader("🛠️ Healed Timetable")
+    st.dataframe(section_healed if not section_healed.empty else "✅ No healing needed!", use_container_width=True)
 
-st.subheader("🚦 Transit Time Violations")
-st.dataframe(section_transit if not section_transit.empty else "✅ No transit issues!", use_container_width=True)
+    st.subheader("🚦 Transit Violations")
+    st.dataframe(section_transit if not section_transit.empty else "✅ No transit issues!", use_container_width=True)
+
+elif view_type == "Teacher":
+    teacher_list = teachers_df["TeacherID"].unique().tolist()
+    selected_teacher = st.sidebar.selectbox("Teacher ID", teacher_list)
+    st.title("👩‍🏫 Teacher Timetable")
+    teacher_tt = final_tt_df[final_tt_df["TeacherID"] == selected_teacher]
+    st.dataframe(teacher_tt if not teacher_tt.empty else "No classes assigned", use_container_width=True)
+
+elif view_type == "Admin":
+    st.title("🛠️ Admin Dashboard")
+    st.markdown("View all schedules across sections, batches, and teachers")
+    st.dataframe(final_tt_df, use_container_width=True)
+    st.markdown("---")
+    st.subheader("⚠️ Anomalies")
+    st.dataframe(anomalies_df, use_container_width=True)
+    st.subheader("🔁 Healed Timetable")
+    st.dataframe(healed_df, use_container_width=True)
+    st.subheader("🚦 Transit Violations")
+    st.dataframe(transit_df, use_container_width=True)
 
 st.markdown("---")
-st.info("To export this timetable or integrate via API, use /models and /utils directories in repo.")
+st.info("To integrate this with frontend, expose endpoints from these datasets.")
